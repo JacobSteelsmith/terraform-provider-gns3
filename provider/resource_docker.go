@@ -19,6 +19,7 @@ type DockerProperties struct {
 	ConsoleType  string   `json:"console_type"`
 	ExtraVolumes []string `json:"extra_volumes,omitempty"`
 	StartCommand *string  `json:"start_command,omitempty"`
+	Adapters     int      `json:"adapters,omitempty"`
 }
 
 // DockerNode represents the JSON payload for creating a Docker node.
@@ -107,6 +108,12 @@ func resourceGns3Docker() *schema.Resource {
 				Default:     true,
 				Description: "Whether to start the Docker container after creation.",
 			},
+			"adapters": {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Default:     1,
+				Description: "The number of network adapters (interfaces) to allocate on creation.",
+			},
 		},
 	}
 }
@@ -148,6 +155,9 @@ func resourceGns3DockerCreate(d *schema.ResourceData, meta interface{}) error {
 		startCommand = &cmd
 	}
 
+	// Retrieve adapters count
+	adapters := d.Get("adapters").(int)
+
 	// Build the payload for the Docker node
 	dockerNode := DockerNode{
 		Name:      name,
@@ -161,6 +171,7 @@ func resourceGns3DockerCreate(d *schema.ResourceData, meta interface{}) error {
 			ConsoleType:  "none",
 			ExtraVolumes: extraVolumes,
 			StartCommand: startCommand,
+			Adapters:     adapters,
 		},
 	}
 
