@@ -109,6 +109,7 @@ func resourceGns3Link() *schema.Resource {
 }
 
 // resourceGns3LinkCreate creates a new link between two nodes.
+// Retries with exponential backoff on 409 (uBridge conflict).
 func resourceGns3LinkCreate(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*ProviderConfig)
 	host := config.Host
@@ -148,28 +149,51 @@ func resourceGns3LinkCreate(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	url := fmt.Sprintf("%s/v2/projects/%s/links", host, projectID)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(linkData))
-	if err != nil {
-		return fmt.Errorf("failed to create link: %s", err)
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
+	// Retry with exponential backoff on 409 Conflict
+	maxRetries := 5
+	backoff := 2 * time.Second
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(linkData))
+		if err != nil {
+			return fmt.Errorf("failed to create link: %s", err)
+		}
+
+		if resp.StatusCode == http.StatusCreated {
+			var createdLink Link
+			if err := json.NewDecoder(resp.Body).Decode(&createdLink); err != nil {
+				resp.Body.Close()
+				return fmt.Errorf("failed to decode link response: %s", err)
+			}
+			resp.Body.Close()
+
+			d.SetId(createdLink.LinkID)
+			d.Set("link_id", createdLink.LinkID)
+			return nil
+		}
+
+		body, _ := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		// Retry on 409 Conflict (uBridge not ready)
+		if resp.StatusCode == http.StatusConflict && attempt < maxRetries {
+			time.Sleep(backoff)
+			backoff *= 2 // exponential backoff
+			// Re-marshal since we need a fresh reader
+			linkData, _ = json.Marshal(link)
+			continue
+		}
+
+		// Non-retryable error or retries exhausted
 		var errorResponse map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&errorResponse); err != nil {
-			return fmt.Errorf("failed to create link, status code: %d", resp.StatusCode)
+		if err := json.Unmarshal(body, &errorResponse); err != nil {
+			return fmt.Errorf("failed to create link, status code: %d, response: %s", resp.StatusCode, string(body))
 		}
 		return fmt.Errorf("failed to create link, status code: %d, error: %v", resp.StatusCode, errorResponse)
 	}
 
-	var createdLink Link
-	if err := json.NewDecoder(resp.Body).Decode(&createdLink); err != nil {
-		return fmt.Errorf("failed to decode link response: %s", err)
-	}
-
-	d.SetId(createdLink.LinkID)
-	d.Set("link_id", createdLink.LinkID)
-	return nil
+	return fmt.Errorf("failed to create link after %d retries due to persistent 409 conflict", maxRetries)
 }
 
 func resourceGns3LinkRead(d *schema.ResourceData, meta interface{}) error {
@@ -253,37 +277,51 @@ func resourceGns3LinkUpdate(d *schema.ResourceData, meta interface{}) error {
 }
 
 // resourceGns3LinkDelete deletes the link.
+// Retries with exponential backoff on 409 (uBridge conflict).
 func resourceGns3LinkDelete(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*ProviderConfig)
 	host := config.Host
 	projectID := d.Get("project_id").(string)
 	linkID := d.Id()
 
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/v2/projects/%s/links/%s", host, projectID, linkID), nil)
-	if err != nil {
-		return fmt.Errorf("error creating delete request: %s", err)
-	}
-
+	url := fmt.Sprintf("%s/v2/projects/%s/links/%s", host, projectID, linkID)
 	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("error deleting GNS3 link: %s", err)
-	}
-	defer resp.Body.Close()
 
-	// Ignore 404 errors during delete — treat as already gone
-	if resp.StatusCode == http.StatusNotFound {
-		d.SetId("")
-		return nil
-	}
+	maxRetries := 5
+	backoff := 2 * time.Second
 
-	if resp.StatusCode != http.StatusNoContent {
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequest("DELETE", url, nil)
+		if err != nil {
+			return fmt.Errorf("error creating delete request: %s", err)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf("error deleting GNS3 link: %s", err)
+		}
+
+		// Success or already gone
+		if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
+			d.SetId("")
+			return nil
+		}
+
 		body, _ := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		// Retry on 409 Conflict (uBridge not ready)
+		if resp.StatusCode == http.StatusConflict && attempt < maxRetries {
+			time.Sleep(backoff)
+			backoff *= 2
+			continue
+		}
+
 		return fmt.Errorf("failed to delete GNS3 link, status code: %d, response: %s", resp.StatusCode, string(body))
 	}
 
-	d.SetId("")
-	return nil
+	return fmt.Errorf("failed to delete GNS3 link after %d retries due to persistent 409 conflict", maxRetries)
 }
 func resourceGns3LinkImporter(
 	ctx context.Context,
