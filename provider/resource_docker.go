@@ -100,6 +100,7 @@ func resourceGns3Docker() *schema.Resource {
 			"start_command": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				ForceNew:    true,
 				Description: "Command to run when starting the Docker container.",
 			},
 			"start": {
@@ -112,6 +113,7 @@ func resourceGns3Docker() *schema.Resource {
 				Type:        schema.TypeInt,
 				Optional:    true,
 				Default:     1,
+				ForceNew:    true,
 				Description: "The number of network adapters (interfaces) to allocate on creation.",
 			},
 		},
