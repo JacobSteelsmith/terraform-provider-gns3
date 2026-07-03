@@ -160,11 +160,11 @@ func resourceGns3QemuCreate(d *schema.ResourceData, meta interface{}) error {
 
 	// Controller-level API
 	payload := map[string]interface{}{
-		"name":       name,
-		"node_type":  "qemu",
-		"compute_id": "local", // adjust if needed
+		"name":         name,
+		"node_type":    "qemu",
+		"compute_id":   "local", // adjust if needed
 		"console_type": consoleType,
-		"properties": properties,
+		"properties":   properties,
 	}
 
 	if consoleOk {
@@ -409,13 +409,13 @@ func resourceGns3QemuUpdate(d *schema.ResourceData, meta interface{}) error {
 		putPayload["name"] = d.Get("name").(string)
 	}
 	if d.HasChange("console") {
-	  if v, ok := d.GetOk("console"); ok {
-		putPayload["console"] = v.(int)
-	  }
-    }
+		if v, ok := d.GetOk("console"); ok {
+			putPayload["console"] = v.(int)
+		}
+	}
 	if d.HasChange("console_type") {
-      putPayload["console_type"] = d.Get("console_type").(string)
-    }
+		putPayload["console_type"] = d.Get("console_type").(string)
+	}
 	if d.HasChange("x") {
 		if xv, ok := d.GetOkExists("x"); ok {
 			putPayload["x"] = xv.(int)
@@ -426,7 +426,7 @@ func resourceGns3QemuUpdate(d *schema.ResourceData, meta interface{}) error {
 			putPayload["y"] = yv.(int)
 		}
 	}
-	
+
 	// 5) PUT update
 	data, err := json.Marshal(putPayload)
 	if err != nil {
