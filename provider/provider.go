@@ -33,6 +33,7 @@ func Provider() *schema.Provider {
 			"gns3_start_all": resourceGns3StartAll(),
 			"gns3_docker":    resourceGns3Docker(),
 			"gns3_qemu_node": resourceGns3Qemu(),
+			"gns3_nat":       resourceGns3Nat(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"gns3_template_id": dataSourceGns3TemplateID(),
