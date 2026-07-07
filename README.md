@@ -76,6 +76,17 @@ resource "gns3_project" "lab1" {
 }
 ```
 
+### Creating a NAT node
+```hcl
+resource "gns3_nat" "wan_gateway" {
+  project_id = gns3_project.lab1.id
+  name       = "Internet Gateway"
+  x          = -100
+  y          = -200
+}
+
+```
+
 ### Creating a QEMU Node
 
 ```hcl
